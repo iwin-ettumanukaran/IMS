@@ -1,0 +1,367 @@
+# Import required libraries
+from functools import reduce  # For functional programming (e.g., summing values)
+from datetime import datetime  # For timestamping sales records
+import csv  # For reading CSV files in bulk update feature
+
+# Define the Product class to represent individual inventory items
+class Product:
+    # Constructor to initialize a product with its attributes
+    def __init__(self, product_id, name, quantity, price):
+        self.product_id = product_id  # Unique identifier for the product
+        self.name = name  # Product name
+        self.quantity = quantity  # Available stock quantity
+        self.price = price  # Price per unit
+
+    # Method to convert product details to a string format for file storage
+    def to_string(self):
+        return f"{self.product_id},{self.name},{self.quantity},{self.price}\n"
+
+# Define the Inventory class to manage the inventory system
+class Inventory:
+    # Class-level constants for file names
+    INVENTORY_FILE = "inventory.txt"  # File to store inventory data
+    SALES_FILE = "sales.txt"  # File to store sales records
+
+    # Constructor to initialize the inventory system
+    def __init__(self):
+        self.inventory = self.load_inventory()  # Load inventory from file into memory
+
+    # Load inventory data from the text file into a dictionary
+    def load_inventory(self):
+        """Load inventory data from file into a dictionary."""
+        inventory = {}  # Dictionary to store product details
+        try:
+            with open(self.INVENTORY_FILE, "r") as file:  # Open inventory file for reading
+                for line in file:  # Iterate through each line
+                    try:
+                        # Split line into product_id, name, quantity, and price
+                        product_id, name, quantity, price = line.strip().split(",")
+                        # Store in dictionary with product_id as key
+                        inventory[product_id] = {"name": name, "quantity": int(quantity), "price": float(price)}
+                    except ValueError:
+                        print("Skipping corrupt inventory record.")  # Handle malformed lines
+        except FileNotFoundError:
+            print("Inventory file not found. Starting fresh.")  # Handle missing file
+        return inventory
+
+    # Save the in-memory inventory dictionary back to the file
+    def save_inventory(self):
+        """Save inventory data to the text file."""
+        with open(self.INVENTORY_FILE, "w") as file:  # Open file for writing (overwrites existing)
+            for pid, details in self.inventory.items():  # Iterate through inventory items
+                # Write each product in CSV format
+                file.write(f"{pid},{details['name']},{details['quantity']},{details['price']}\n")
+
+    # Display all products in the current inventory
+    def view_inventory(self):
+        """Display the current inventory to the user."""
+        print("\n--- Inventory ---")  # Header for readability
+        for pid, details in self.inventory.items():  # Loop through all products
+            # Print product details in a formatted way
+            print(f"ID: {pid}, Name: {details['name']}, Quantity: {details['quantity']}, Price: {details['price']}")
+
+    # Add a single new product to the inventory
+    def add_product(self):
+        """Add a new product to the inventory based on user input."""
+        product_id = input("Enter product ID: ")  # Get product ID from user
+        if product_id in self.inventory:  # Check for duplicate ID
+            print("Product ID already exists!")
+            return
+        name = input("Enter product name: ")  # Get product name
+        try:
+            quantity = int(input("Enter quantity: "))  # Get quantity (convert to int)
+            price = float(input("Enter price: "))  # Get price (convert to float)
+            # Add product to inventory dictionary
+            self.inventory[product_id] = {"name": name, "quantity": quantity, "price": price}
+            self.save_inventory()  # Save changes to file
+            print("Product added successfully!")
+        except ValueError:
+            print("Invalid input! Quantity and price must be numbers.")  # Handle invalid input
+
+    # Record a single sale and update inventory
+    def record_sale(self):
+        """Record a sale, update stock, and log it to the sales file."""
+        try:
+            product_id = input("Enter product ID: ")  # Get product ID
+            if product_id not in self.inventory:  # Check if product exists
+                print("Product not found!")
+                return
+            quantity = int(input("Enter quantity sold: "))  # Get quantity sold
+            customer = input("Enter customer name: ")  # Get customer name
+            if self.inventory[product_id]["quantity"] < quantity:  # Check stock availability
+                print("Insufficient stock!")
+                return
+            self.inventory[product_id]["quantity"] -= quantity  # Reduce stock
+            self.save_inventory()  # Save updated inventory
+            with open(self.SALES_FILE, "a") as file:  # Append sale to sales file
+                file.write(f"{datetime.now()},{product_id},{self.inventory[product_id]['name']},{quantity},{customer}\n")
+            print("Sale recorded successfully!")
+        except ValueError:
+            print("Invalid input! Quantity must be a number.")  # Handle invalid input
+
+    # Record multiple sales in one session
+    def record_bulk_sales(self):
+        """Record multiple sales at once and update inventory."""
+        print("\n--- Record Bulk Sales ---")  # Header for user
+        try:
+            num_sales = int(input("Enter number of sales to record: "))  # Number of sales to process
+            customer = input("Enter customer name: ")  # Single customer for all sales
+            sales_list = []  # List to store valid sales
+            for _ in range(num_sales):  # Loop for each sale
+                product_id = input("Enter product ID: ")  # Get product ID
+                if product_id not in self.inventory:  # Check if product exists
+                    print("Product not found! Skipping this entry.")
+                    continue
+                quantity = int(input("Enter quantity sold: "))  # Get quantity
+                if self.inventory[product_id]["quantity"] < quantity:  # Check stock
+                    print("Insufficient stock! Skipping this entry.")
+                    continue
+                sales_list.append((product_id, quantity))  # Add valid sale to list
+            
+            # Process all valid sales at once
+            with open(self.SALES_FILE, "a") as file:  # Open sales file in append mode
+                for product_id, quantity in sales_list:  # Loop through valid sales
+                    self.inventory[product_id]["quantity"] -= quantity  # Update stock
+                    # Write sale record with timestamp
+                    file.write(f"{datetime.now()},{product_id},{self.inventory[product_id]['name']},{quantity},{customer}\n")
+            self.save_inventory()  # Save updated inventory
+            print("Bulk sales recorded successfully!")
+        except ValueError:
+            print("Invalid input! Please enter valid numbers for quantities.")  # Handle invalid input
+
+    # Add multiple products to inventory in one session
+    def record_bulk_stock_addition(self):
+        """Add multiple new products to inventory at once."""
+        print("\n--- Bulk Stock Addition ---")  # Header for user
+        try:
+            num_products = int(input("Enter number of products to add: "))  # Number of products
+            new_products = []  # List to store valid new products
+            for _ in range(num_products):  # Loop for each product
+                product_id = input("Enter product ID: ")  # Get product ID
+                if product_id in self.inventory:  # Check for duplicates
+                    print("Product ID already exists! Skipping this entry.")
+                    continue
+                name = input("Enter product name: ")  # Get name
+                quantity = int(input("Enter quantity: "))  # Get quantity
+                price = float(input("Enter price: "))  # Get price
+                # Add product details to list
+                new_products.append((product_id, {"name": name, "quantity": quantity, "price": price}))
+            
+            # Add all valid products to inventory
+            for product_id, details in new_products:  # Loop through new products
+                self.inventory[product_id] = details  # Add to inventory dictionary
+            self.save_inventory()  # Save changes
+            print("Bulk stock addition completed successfully!")
+        except ValueError:
+            print("Invalid input! Quantity and price must be numbers.")  # Handle invalid input
+
+    # Update stock quantity of an existing product
+    def update_stock_levels(self):
+        """Update the stock quantity of an existing product."""
+        print("\n--- Update Stock Levels ---")  # Header for user
+        try:
+            product_id = input("Enter product ID to update: ")  # Get product ID
+            if product_id not in self.inventory:  # Check if product exists
+                print("Product not found!")
+                return
+            print(f"Current quantity: {self.inventory[product_id]['quantity']}")  # Show current stock
+            new_quantity = int(input("Enter new quantity: "))  # Get new quantity
+            if new_quantity < 0:  # Validate quantity
+                print("Quantity cannot be negative!")
+                return
+            self.inventory[product_id]["quantity"] = new_quantity  # Update quantity
+            self.save_inventory()  # Save changes
+            print("Stock level updated successfully!")
+        except ValueError:
+            print("Invalid input! Quantity must be a number.")  # Handle invalid input
+
+    # Bulk update or add products from a CSV file
+    def bulk_update_stock_from_csv(self):
+        """Bulk update existing products or add new ones from a CSV file."""
+        print("\n--- Bulk Update Stock from CSV ---")  # Header for user
+        filename = input("Enter CSV filename (e.g., 'stock_update.csv'): ")  # Get CSV filename
+        try:
+            with open(filename, 'r') as csvfile:  # Open CSV file
+                reader = csv.DictReader(csvfile)  # Read as dictionary with headers
+                # Check for required headers (product_id and quantity)
+                if 'product_id' not in reader.fieldnames or 'quantity' not in reader.fieldnames:
+                    print("CSV must contain at least 'product_id' and 'quantity' columns!")
+                    return
+                
+                updated_count = 0  # Track updated products
+                added_count = 0  # Track added products
+                for row in reader:  # Process each row
+                    product_id = row['product_id']  # Get product ID
+                    try:
+                        new_quantity = int(row['quantity'])  # Convert quantity to int
+                        if new_quantity < 0:  # Validate quantity
+                            print(f"Negative quantity for {product_id}! Skipping.")
+                            continue
+                        
+                        if product_id in self.inventory:  # If product exists
+                            self.inventory[product_id]['quantity'] = new_quantity  # Update quantity
+                            # Update name if provided
+                            if 'name' in row and row['name']:
+                                self.inventory[product_id]['name'] = row['name']
+                            # Update price if provided
+                            if 'price' in row and row['price']:
+                                self.inventory[product_id]['price'] = float(row['price'])
+                            updated_count += 1
+                        else:  # If product doesn't exist, add it
+                            # Check for required fields for new product
+                            if 'name' not in row or 'price' not in row or not row['name'] or not row['price']:
+                                print(f"Missing name or price for new product {product_id}! Skipping.")
+                                continue
+                            # Add new product to inventory
+                            self.inventory[product_id] = {
+                                'name': row['name'],
+                                'quantity': new_quantity,
+                                'price': float(row['price'])
+                            }
+                            added_count += 1
+                    except ValueError as e:
+                        print(f"Invalid data for {product_id} ({e})! Skipping.")  # Handle invalid data
+                
+                # Save changes if any updates or additions occurred
+                if updated_count > 0 or added_count > 0:
+                    self.save_inventory()
+                    print(f"Successfully updated {updated_count} products and added {added_count} new products!")
+                else:
+                    print("No products were updated or added.")
+        except FileNotFoundError:
+            print("CSV file not found!")  # Handle missing file
+        except Exception as e:
+            print(f"An error occurred: {e}")  # Handle other errors
+
+    # Alert for products with low stock
+    def low_stock_alert(self):
+        """Identify and display products with stock below 5 units."""
+        print("\n--- Low Stock Alert ---")  # Header for user
+        for pid, details in self.inventory.items():  # Loop through inventory
+            if details["quantity"] < 5:  # Check if stock is low
+                # Print low-stock product details
+                print(f"ID: {pid}, Name: {details['name']}, Quantity: {details['quantity']}, Price: {details['price']}")
+
+    # Calculate total revenue and inventory value
+    def total_revenue_and_inventory_value(self):
+        """Calculate and display total revenue from sales and current inventory value."""
+        try:
+            revenue = 0  # Initialize revenue
+            with open(self.SALES_FILE, "r") as file:  # Open sales file
+                for line in file:  # Process each sale
+                    _, product_id, _, quantity, _ = line.strip().split(",")  # Parse sale record
+                    # Add revenue (quantity * price)
+                    revenue += int(quantity) * self.inventory[product_id]["price"]
+            # Calculate inventory value using reduce
+            inventory_value = reduce(lambda acc, item: acc + (item[1]['quantity'] * item[1]['price']), self.inventory.items(), 0)
+            print(f"Total Revenue: {revenue}")  # Display revenue
+            print(f"Total Inventory Value: {inventory_value}")  # Display inventory value
+        except FileNotFoundError:
+            print("No sales recorded yet.")  # Handle missing sales file
+
+    # Generate a detailed stock report
+    def generate_stock_report(self):
+        """Generate and display a report of all products with their values."""
+        print("\n--- Stock Report ---")  # Header for user
+        total_value = 0  # Initialize total value
+        for pid, details in self.inventory.items():  # Loop through inventory
+            item_value = details["quantity"] * details["price"]  # Calculate value per item
+            total_value += item_value  # Add to total
+            # Print item details
+            print(f"ID: {pid}, Name: {details['name']}, Quantity: {details['quantity']}, Price: {details['price']}, Value: {item_value}")
+        print(f"Total Inventory Value: {total_value}")  # Display total value
+
+    # Identify top 5 high-demand products
+    def high_demand_products(self):
+        """Determine and display the 5 most frequently purchased products."""
+        product_sales = {}  # Dictionary to track sales quantities
+        try:
+            with open(self.SALES_FILE, "r") as file:  # Open sales file
+                for line in file:  # Process each sale
+                    _, product_id, _, quantity, _ = line.strip().split(",")  # Parse sale record
+                    # Accumulate total quantity sold per product
+                    product_sales[product_id] = product_sales.get(product_id, 0) + int(quantity)
+            # Sort products by quantity sold in descending order
+            sorted_products = sorted(product_sales.items(), key=lambda x: x[1], reverse=True)
+            print("\n--- High Demand Products ---")  # Header for user
+            for pid, qty in sorted_products[:5]:  # Display top 5
+                print(f"ID: {pid}, Name: {self.inventory[pid]['name']}, Sold Quantity: {qty}")
+        except FileNotFoundError:
+            print("No sales recorded yet.")  # Handle missing sales file
+
+    # Search and display sales records for a specific product
+    def search_sales(self):
+        """Search and display all sales records for a given product ID."""
+        product_id = input("Enter product ID to search sales: ")  # Get product ID
+        try:
+            with open(self.SALES_FILE, "r") as file:  # Open sales file
+                print("\n--- Sales Records ---")  # Header for user
+                found = False  # Flag to track if records are found
+                for line in file:  # Process each sale
+                    date, pid, name, quantity, customer = line.strip().split(",")  # Parse sale record
+                    if pid == product_id:  # Match product ID
+                        # Print sale details
+                        print(f"Date: {date}, Name: {name}, Quantity: {quantity}, Customer: {customer}")
+                        found = True
+                if not found:
+                    print("No sales records found for this product.")  # No matches
+        except FileNotFoundError:
+            print("No sales recorded yet.")  # Handle missing sales file
+
+# Main function to run the inventory management system
+def main():
+    inventory = Inventory()  # Create an Inventory instance
+    while True:  # Infinite loop for menu
+        # Display menu options
+        print("\nInventory Management System")
+        print("1. Add Product")
+        print("2. View Inventory")
+        print("3. Record Sale")
+        print("4. Low Stock Alert")
+        print("5. Total Revenue and Inventory Worth")
+        print("6. High Demand Products")
+        print("7. Search Sales Record")
+        print("8. Generate Stock Report")
+        print("9. Record Bulk Sales")
+        print("10. Record Bulk Stock Addition")
+        print("11. Update Stock Levels")
+        print("12. Bulk Update Stock from CSV")
+        print("13. Exit")
+        choice = input("Enter your choice: ")  # Get user choice
+        try:
+            # Map choice to corresponding method
+            if choice == "1":
+                inventory.add_product()
+            elif choice == "2":
+                inventory.view_inventory()
+            elif choice == "3":
+                inventory.record_sale()
+            elif choice == "4":
+                inventory.low_stock_alert()
+            elif choice == "5":
+                inventory.total_revenue_and_inventory_value()
+            elif choice == "6":
+                inventory.high_demand_products()
+            elif choice == "7":
+                inventory.search_sales()
+            elif choice == "8":
+                inventory.generate_stock_report()
+            elif choice == "9":
+                inventory.record_bulk_sales()
+            elif choice == "10":
+                inventory.record_bulk_stock_addition()
+            elif choice == "11":
+                inventory.update_stock_levels()
+            elif choice == "12":
+                inventory.bulk_update_stock_from_csv()
+            elif choice == "13":
+                print("Exiting...")  # Exit message
+                break  # Exit loop
+            else:
+                print("Invalid choice! Try again.")  # Handle invalid input
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")  # Catch unexpected errors
+
+# Entry point of the program
+if __name__ == "__main__":
+    main()  # Run the main function
